@@ -34,10 +34,17 @@
             </button>
 
             <p id="auth-error"></p>
+
+            <footer style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 11px; color: #888; line-height: 1.6; text-align: center;">
+                <p><strong>Developer Portfolio Project</strong></p>
+                <p>This is a non-commercial educational project created to demonstrate Firebase integration.</p>
+                <p>Authentication is handled securely by Google. We do not store personal passwords.</p>
+                <p>Under Development by <strong>Akshat Mehta</strong></p>
+            </footer>
         </div>
     </div>
 
-    <div id="app-screen">
+    <div id="app-screen" style="display: none;">
         <div class="sidebar">
             <div class="sidebar-header">
                 <div class="my-profile-info">
@@ -106,7 +113,6 @@
         let unsubscribeMessages = null;
         let isSignUpMode = false; 
 
-        // Elements
         const loginScreen = document.getElementById("login-screen");
         const appScreen = document.getElementById("app-screen");
         const userList = document.getElementById("user-list");
@@ -117,7 +123,6 @@
         const profileModal = document.getElementById("profile-modal");
         const authError = document.getElementById("auth-error");
 
-        // --- AUTH LOGIC ---
         document.getElementById("google-login-btn").addEventListener("click", () => {
             signInWithPopup(auth, new GoogleAuthProvider()).catch(err => showError(err.message));
         });
@@ -138,8 +143,6 @@
             const email = document.getElementById("email-input").value.trim();
             const password = document.getElementById("password-input").value.trim();
             if (!email || !password) return showError("Please enter email and password.");
-            authError.style.display = "none";
-
             try {
                 if (isSignUpMode) {
                     await createUserWithEmailAndPassword(auth, email, password);
@@ -157,29 +160,20 @@
                 currentUser = user;
                 loginScreen.style.display = "none";
                 appScreen.style.display = "flex";
-                
                 const displayName = user.displayName || user.email.split('@')[0];
                 const photoURL = user.photoURL || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
-
                 document.getElementById("my-name").textContent = displayName;
                 document.getElementById("my-profile-pic").src = photoURL;
-
-                await setDoc(doc(db, "users", user.uid), {
-                    uid: user.uid, name: displayName, email: user.email, photoURL: photoURL
-                }, { merge: true });
-
+                await setDoc(doc(db, "users", user.uid), { uid: user.uid, name: displayName, email: user.email, photoURL: photoURL }, { merge: true });
                 loadUsers();
             } else {
                 currentUser = null;
                 loginScreen.style.display = "flex";
                 appScreen.style.display = "none";
-                document.getElementById("email-input").value = "";
-                document.getElementById("password-input").value = "";
                 if (unsubscribeMessages) unsubscribeMessages();
             }
         });
 
-        // --- CHAT LOGIC ---
         function loadUsers() {
             onSnapshot(collection(db, "users"), (snapshot) => {
                 userList.innerHTML = ""; 
@@ -195,70 +189,43 @@
             });
         }
 
-        // BUG FIX APPLIED HERE: Creating the room FIRST before listening
         async function openPrivateChat(otherUser) {
             currentChatUser = otherUser;
             currentChatId = currentUser.uid < otherUser.uid ? currentUser.uid + "_" + otherUser.uid : otherUser.uid + "_" + currentUser.uid;
-
             chatWithName.textContent = otherUser.name;
             inputArea.style.display = "flex"; 
-
             if (unsubscribeMessages) unsubscribeMessages();
-
-            // Make sure the room exists in the database before trying to read from it
-            await setDoc(doc(db, "chats", currentChatId), { 
-                participants: [currentUser.uid, currentChatUser.uid] 
-            }, { merge: true });
-
+            await setDoc(doc(db, "chats", currentChatId), { participants: [currentUser.uid, currentChatUser.uid] }, { merge: true });
             const q = query(collection(db, "chats", currentChatId, "messages"), orderBy("timestamp", "asc"));
-            
             unsubscribeMessages = onSnapshot(q, (snapshot) => {
                 messagesContainer.innerHTML = ""; 
                 snapshot.forEach((docSnap) => {
                     const msg = docSnap.data({ serverTimestamps: "estimate" }); 
                     const div = document.createElement("div");
                     div.className = msg.senderId === currentUser.uid ? "message my-message" : "message their-message";
-                    
-                    let timeString = "Just now";
-                    if (msg.timestamp) {
-                        timeString = msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    }
-
-                    div.innerHTML = `
-                        <span class="msg-text">${msg.text}</span>
-                        <span class="msg-time">${timeString}</span>
-                    `;
-                    
+                    let timeString = msg.timestamp ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now";
+                    div.innerHTML = `<span class="msg-text">${msg.text}</span><span class="msg-time">${timeString}</span>`;
                     messagesContainer.appendChild(div);
                 });
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
             });
         }
 
-        // BUG FIX APPLIED HERE: Using Timestamp.now() for instant delivery
         document.getElementById("send-btn").addEventListener("click", async () => {
             const text = messageInput.value.trim();
             if (!text || !currentChatId) return;
             messageInput.value = ""; 
-
-            await addDoc(collection(db, "chats", currentChatId, "messages"), {
-                text: text, 
-                senderId: currentUser.uid, 
-                timestamp: Timestamp.now() 
-            });
+            await addDoc(collection(db, "chats", currentChatId, "messages"), { text: text, senderId: currentUser.uid, timestamp: Timestamp.now() });
         });
 
         messageInput.addEventListener("keypress", (e) => { if (e.key === "Enter") document.getElementById("send-btn").click(); });
 
-        // --- PROFILE EDIT LOGIC ---
         document.getElementById("edit-profile-btn").addEventListener("click", () => {
             document.getElementById("edit-name-input").value = currentUser.displayName || document.getElementById("my-name").textContent;
             document.getElementById("edit-pic-input").value = currentUser.photoURL || document.getElementById("my-profile-pic").src;
             profileModal.style.display = "flex";
         });
-        
         document.getElementById("close-modal-btn").addEventListener("click", () => profileModal.style.display = "none");
-        
         document.getElementById("save-profile-btn").addEventListener("click", async () => {
             const newName = document.getElementById("edit-name-input").value.trim();
             const newPic = document.getElementById("edit-pic-input").value.trim();
@@ -270,26 +237,6 @@
                 profileModal.style.display = "none";
             }
         });
-    </script>
-   <div id="login-screen" class="screen">
-        <div class="auth-box">
-            <img src="logo.png" alt="ChatApp Logo" class="login-logo">
-            <h1>ChatApp</h1>
-            <p>Sign in to continue</p>
-
-            <p id="auth-error"></p>
-
-            <footer style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 12px; color: #888; line-height: 1.6;">
-                <p><strong>Developer Portfolio Project</strong></p>
-                <p>This is a non-commercial educational project created to demonstrate Firebase integration.</p>
-                <p>We do not collect or store personal passwords. All authentication is handled securely by Google.</p>
-                <p> This Site is in UnderDevelopment and Made by Akshat Mehta/AkshatMehta-124</p>
-            </footer>
-        </div>
-    </div>
-
-    <script type="module">
-        // JavaScript stays down here!
     </script>
 </body>
 </html>
