@@ -2,14 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; script-src-elem 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https:;">
     <meta name="google-site-verification" content="wCG4UFi1An-_Wa6m1kO2MpMmuii7GOmAyI6G-XiGfEo" />
     <meta name="google-site-verification" content="uxFFc2wW4266GeX3SJD-_9sGId4Mi6wer2hOxYW8SD0" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Portfolio Project: Firebase Chat App</title>
     
     <link rel="icon" type="image/png" href="logo.png">
-    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -28,7 +27,6 @@
             </div>
 
             <p class="toggle-text" id="toggle-mode-text">New here? <span>Create an account</span></p>
-
             <div class="divider">OR</div>
 
             <button id="google-login-btn" class="google-btn">
@@ -94,9 +92,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        // IMPORTED deleteUser tool
         import { getAuth, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, deleteUser } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-        // IMPORTED deleteDoc tool
         import { getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, Timestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -130,6 +126,7 @@
         const authError = document.getElementById("auth-error");
         const emailAuthBtn = document.getElementById("email-auth-btn");
 
+        // --- AUTHENTICATION ---
         document.getElementById("google-login-btn").addEventListener("click", () => {
             signInWithPopup(auth, new GoogleAuthProvider()).catch(err => showError(err.message));
         });
@@ -150,20 +147,15 @@
             const email = document.getElementById("email-input").value.trim();
             const password = document.getElementById("password-input").value.trim();
             if (!email || !password) return showError("Please enter email and password.");
-            
             emailAuthBtn.disabled = true; 
-            
             try {
                 if (isSignUpMode) {
                     await createUserWithEmailAndPassword(auth, email, password);
                 } else {
                     await signInWithEmailAndPassword(auth, email, password);
                 }
-            } catch (error) { 
-                showError(error.message); 
-            } finally {
-                emailAuthBtn.disabled = false;
-            }
+            } catch (error) { showError(error.message); }
+            finally { emailAuthBtn.disabled = false; }
         });
 
         function showError(msg) { authError.textContent = msg; authError.style.display = "block"; }
@@ -176,40 +168,31 @@
                 appScreen.style.display = "flex";
                 const displayName = user.displayName || user.email.split('@')[0];
                 const photoURL = user.photoURL && user.photoURL.startsWith('http') ? user.photoURL : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
-                
                 document.getElementById("my-name").textContent = displayName;
                 document.getElementById("my-profile-pic").src = photoURL;
-                
                 await setDoc(doc(db, "users", user.uid), { uid: user.uid, name: displayName, email: user.email, photoURL: photoURL }, { merge: true });
                 loadUsers();
             } else {
                 currentUser = null;
-                loginScreen.style.display = "none";
-                setTimeout(() => {
-                    loginScreen.style.display = "flex";
-                    appScreen.style.display = "none";
-                }, 50);
+                loginScreen.style.display = "flex";
+                appScreen.style.display = "none";
                 if (unsubscribeMessages) unsubscribeMessages();
             }
         });
 
+        // --- SIDEBAR & USERS ---
         function loadUsers() {
             onSnapshot(collection(db, "users"), (snapshot) => {
                 userList.innerHTML = ""; 
                 snapshot.forEach((docSnap) => {
                     const otherUser = docSnap.data();
-                    if (otherUser.uid !== currentUser.uid) {
+                    if (currentUser && otherUser.uid !== currentUser.uid) {
                         const li = document.createElement("li");
-                        
                         const img = document.createElement("img");
                         img.src = otherUser.photoURL && otherUser.photoURL.startsWith('http') ? otherUser.photoURL : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
-                        img.alt = "Profile";
-                        
                         const nameSpan = document.createElement("span");
-                        nameSpan.textContent = otherUser.name || "Unknown User";
-
-                        li.appendChild(img);
-                        li.appendChild(nameSpan);
+                        nameSpan.textContent = otherUser.name || "User";
+                        li.appendChild(img); li.appendChild(nameSpan);
                         li.addEventListener("click", () => openPrivateChat(otherUser));
                         userList.appendChild(li);
                     }
@@ -217,35 +200,28 @@
             });
         }
 
+        // --- CHAT LOGIC ---
         async function openPrivateChat(otherUser) {
             currentChatUser = otherUser;
             currentChatId = currentUser.uid < otherUser.uid ? currentUser.uid + "_" + otherUser.uid : otherUser.uid + "_" + currentUser.uid;
             chatWithName.textContent = otherUser.name;
             inputArea.style.display = "flex"; 
             if (unsubscribeMessages) unsubscribeMessages();
-            
             await setDoc(doc(db, "chats", currentChatId), { participants: [currentUser.uid, currentChatUser.uid] }, { merge: true });
             const q = query(collection(db, "chats", currentChatId, "messages"), orderBy("timestamp", "asc"));
-            
             unsubscribeMessages = onSnapshot(q, (snapshot) => {
                 messagesContainer.innerHTML = ""; 
                 snapshot.forEach((docSnap) => {
                     const msg = docSnap.data({ serverTimestamps: "estimate" }); 
                     const div = document.createElement("div");
                     div.className = msg.senderId === currentUser.uid ? "message my-message" : "message their-message";
-                    
                     let timeString = msg.timestamp ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now";
-                    
                     const textSpan = document.createElement("span");
-                    textSpan.className = "msg-text";
                     textSpan.textContent = msg.text;
-
                     const timeSpan = document.createElement("span");
                     timeSpan.className = "msg-time";
                     timeSpan.textContent = timeString;
-
-                    div.appendChild(textSpan);
-                    div.appendChild(timeSpan);
+                    div.appendChild(textSpan); div.appendChild(timeSpan);
                     messagesContainer.appendChild(div);
                 });
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -261,53 +237,32 @@
 
         messageInput.addEventListener("keypress", (e) => { if (e.key === "Enter") document.getElementById("send-btn").click(); });
 
+        // --- PROFILE & DELETE ---
         document.getElementById("edit-profile-btn").addEventListener("click", () => {
             document.getElementById("edit-name-input").value = currentUser.displayName || document.getElementById("my-name").textContent;
             document.getElementById("edit-pic-input").value = currentUser.photoURL || document.getElementById("my-profile-pic").src;
             profileModal.style.display = "flex";
         });
         document.getElementById("close-modal-btn").addEventListener("click", () => profileModal.style.display = "none");
-        
         document.getElementById("save-profile-btn").addEventListener("click", async () => {
             const newName = document.getElementById("edit-name-input").value.trim();
             const newPic = document.getElementById("edit-pic-input").value.trim();
-            
-            if (newName && newPic && newPic.startsWith('http')) {
+            if (newName && newPic.startsWith('http')) {
                 await updateProfile(currentUser, { displayName: newName, photoURL: newPic });
                 await updateDoc(doc(db, "users", currentUser.uid), { name: newName, photoURL: newPic });
                 document.getElementById("my-name").textContent = newName;
                 document.getElementById("my-profile-pic").src = newPic;
                 profileModal.style.display = "none";
-            } else {
-                alert("Please enter a valid image URL starting with http");
-            }
+            } else { alert("Invalid inputs."); }
         });
 
-        // --- NEW DELETE ACCOUNT LOGIC ---
         document.getElementById("delete-account-btn").addEventListener("click", async () => {
-            // Give them a warning prompt first!
-            const isConfirmed = confirm("Are you sure you want to permanently delete your account? All your data will be lost.");
-            
-            if (isConfirmed && currentUser) {
+            if (confirm("Permanently delete account?")) {
                 try {
-                    // 1. Delete user from the Firestore Database
                     await deleteDoc(doc(db, "users", currentUser.uid));
-                    
-                    // 2. Delete user from Firebase Auth
                     await deleteUser(currentUser);
-                    
-                    // Close the modal (the Auth state listener will automatically kick them to the login screen)
-                    profileModal.style.display = "none";
-                    alert("Your account has been deleted.");
-                    
-                } catch (error) {
-                    // Firebase requires you to have logged in *recently* to delete an account.
-                    if (error.code === 'auth/requires-recent-login') {
-                        alert("For security reasons, please log out and log back in, then try deleting your account again.");
-                    } else {
-                        alert("Error: " + error.message);
-                    }
-                }
+                    alert("Account Deleted.");
+                } catch (e) { alert("Error: Log out and back in to re-authenticate first."); }
             }
         });
     </script>
