@@ -85,6 +85,7 @@
             <label>Profile Picture URL:</label>
             <input type="url" id="edit-pic-input" placeholder="https://link.com/pic.jpg">
             <div class="modal-buttons">
+                <button id="delete-account-btn" style="background: #d32f2f; color: white; margin-right: auto; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer;">Delete Account</button>
                 <button id="close-modal-btn">Cancel</button>
                 <button id="save-profile-btn">Save</button>
             </div>
@@ -93,8 +94,10 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, updateDoc, collection, onSnapshot, addDoc, Timestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        // IMPORTED deleteUser tool
+        import { getAuth, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, deleteUser } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        // IMPORTED deleteDoc tool
+        import { getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, Timestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyA_lmaWDdayWIOKK02h2uvZSeBasdUonXc",
@@ -181,8 +184,7 @@
                 loadUsers();
             } else {
                 currentUser = null;
-                loginScreen.style.display = "none"; // Temporarily hide while calculating
-                // Use a tiny timeout to avoid UI flicker on logout
+                loginScreen.style.display = "none";
                 setTimeout(() => {
                     loginScreen.style.display = "flex";
                     appScreen.style.display = "none";
@@ -278,6 +280,34 @@
                 profileModal.style.display = "none";
             } else {
                 alert("Please enter a valid image URL starting with http");
+            }
+        });
+
+        // --- NEW DELETE ACCOUNT LOGIC ---
+        document.getElementById("delete-account-btn").addEventListener("click", async () => {
+            // Give them a warning prompt first!
+            const isConfirmed = confirm("Are you sure you want to permanently delete your account? All your data will be lost.");
+            
+            if (isConfirmed && currentUser) {
+                try {
+                    // 1. Delete user from the Firestore Database
+                    await deleteDoc(doc(db, "users", currentUser.uid));
+                    
+                    // 2. Delete user from Firebase Auth
+                    await deleteUser(currentUser);
+                    
+                    // Close the modal (the Auth state listener will automatically kick them to the login screen)
+                    profileModal.style.display = "none";
+                    alert("Your account has been deleted.");
+                    
+                } catch (error) {
+                    // Firebase requires you to have logged in *recently* to delete an account.
+                    if (error.code === 'auth/requires-recent-login') {
+                        alert("For security reasons, please log out and log back in, then try deleting your account again.");
+                    } else {
+                        alert("Error: " + error.message);
+                    }
+                }
             }
         });
     </script>
