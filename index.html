@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'module' https://www.gstatic.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https:;">
     <meta name="google-site-verification" content="wCG4UFi1An-_Wa6m1kO2MpMmuii7GOmAyI6G-XiGfEo" />
     <meta name="google-site-verification" content="uxFFc2wW4266GeX3SJD-_9sGId4Mi6wer2hOxYW8SD0" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -29,7 +30,7 @@
             <div class="divider">OR</div>
 
             <button id="google-login-btn" class="google-btn">
-                <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSft0JWwfMyhXQWgaF_mG4cynf0rbh1cPdXlQ0cETHpf65_xXevOY1U&usqp=CAE&s" alt="Google Logo" width="20">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google Logo" width="20"> 
                 Continue with Google
             </button>
 
@@ -78,9 +79,9 @@
         <div class="modal-content">
             <h2>Edit Profile</h2>
             <label>Display Name:</label>
-            <input type="text" id="edit-name-input">
+            <input type="text" id="edit-name-input" maxlength="30">
             <label>Profile Picture URL:</label>
-            <input type="text" id="edit-pic-input" placeholder="https://link.com/pic.jpg">
+            <input type="url" id="edit-pic-input" placeholder="https://link.com/pic.jpg">
             <div class="modal-buttons">
                 <button id="close-modal-btn">Cancel</button>
                 <button id="save-profile-btn">Save</button>
@@ -122,6 +123,7 @@
         const chatWithName = document.getElementById("chat-with-name");
         const profileModal = document.getElementById("profile-modal");
         const authError = document.getElementById("auth-error");
+        const emailAuthBtn = document.getElementById("email-auth-btn");
 
         document.getElementById("google-login-btn").addEventListener("click", () => {
             signInWithPopup(auth, new GoogleAuthProvider()).catch(err => showError(err.message));
@@ -131,25 +133,32 @@
             isSignUpMode = !isSignUpMode;
             authError.style.display = "none";
             if (isSignUpMode) {
-                document.getElementById("email-auth-btn").textContent = "Create Account";
+                emailAuthBtn.textContent = "Create Account";
                 document.getElementById("toggle-mode-text").innerHTML = 'Already have an account? <span>Sign In</span>';
             } else {
-                document.getElementById("email-auth-btn").textContent = "Sign In";
+                emailAuthBtn.textContent = "Sign In";
                 document.getElementById("toggle-mode-text").innerHTML = 'New here? <span>Create an account</span>';
             }
         });
 
-        document.getElementById("email-auth-btn").addEventListener("click", async () => {
+        emailAuthBtn.addEventListener("click", async () => {
             const email = document.getElementById("email-input").value.trim();
             const password = document.getElementById("password-input").value.trim();
             if (!email || !password) return showError("Please enter email and password.");
+            
+            emailAuthBtn.disabled = true; // UX Security: Prevent double-clicking
+            
             try {
                 if (isSignUpMode) {
                     await createUserWithEmailAndPassword(auth, email, password);
                 } else {
                     await signInWithEmailAndPassword(auth, email, password);
                 }
-            } catch (error) { showError(error.message); }
+            } catch (error) { 
+                showError(error.message); 
+            } finally {
+                emailAuthBtn.disabled = false;
+            }
         });
 
         function showError(msg) { authError.textContent = msg; authError.style.display = "block"; }
@@ -161,9 +170,11 @@
                 loginScreen.style.display = "none";
                 appScreen.style.display = "flex";
                 const displayName = user.displayName || user.email.split('@')[0];
-                const photoURL = user.photoURL || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+                const photoURL = user.photoURL && user.photoURL.startsWith('http') ? user.photoURL : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+                
                 document.getElementById("my-name").textContent = displayName;
                 document.getElementById("my-profile-pic").src = photoURL;
+                
                 await setDoc(doc(db, "users", user.uid), { uid: user.uid, name: displayName, email: user.email, photoURL: photoURL }, { merge: true });
                 loadUsers();
             } else {
@@ -174,14 +185,24 @@
             }
         });
 
+        // SECURITY UPDATE: Replaced .innerHTML with safe DOM element creation
         function loadUsers() {
             onSnapshot(collection(db, "users"), (snapshot) => {
                 userList.innerHTML = ""; 
-                snapshot.forEach((doc) => {
-                    const otherUser = doc.data();
+                snapshot.forEach((docSnap) => {
+                    const otherUser = docSnap.data();
                     if (otherUser.uid !== currentUser.uid) {
                         const li = document.createElement("li");
-                        li.innerHTML = `<img src="${otherUser.photoURL}"> <span>${otherUser.name}</span>`;
+                        
+                        const img = document.createElement("img");
+                        img.src = otherUser.photoURL && otherUser.photoURL.startsWith('http') ? otherUser.photoURL : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+                        img.alt = "Profile";
+                        
+                        const nameSpan = document.createElement("span");
+                        nameSpan.textContent = otherUser.name || "Unknown User";
+
+                        li.appendChild(img);
+                        li.appendChild(nameSpan);
                         li.addEventListener("click", () => openPrivateChat(otherUser));
                         userList.appendChild(li);
                     }
@@ -195,16 +216,30 @@
             chatWithName.textContent = otherUser.name;
             inputArea.style.display = "flex"; 
             if (unsubscribeMessages) unsubscribeMessages();
+            
             await setDoc(doc(db, "chats", currentChatId), { participants: [currentUser.uid, currentChatUser.uid] }, { merge: true });
             const q = query(collection(db, "chats", currentChatId, "messages"), orderBy("timestamp", "asc"));
+            
             unsubscribeMessages = onSnapshot(q, (snapshot) => {
                 messagesContainer.innerHTML = ""; 
                 snapshot.forEach((docSnap) => {
                     const msg = docSnap.data({ serverTimestamps: "estimate" }); 
                     const div = document.createElement("div");
                     div.className = msg.senderId === currentUser.uid ? "message my-message" : "message their-message";
+                    
                     let timeString = msg.timestamp ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now";
-                    div.innerHTML = `<span class="msg-text">${msg.text}</span><span class="msg-time">${timeString}</span>`;
+                    
+                    // Already highly secure!
+                    const textSpan = document.createElement("span");
+                    textSpan.className = "msg-text";
+                    textSpan.textContent = msg.text;
+
+                    const timeSpan = document.createElement("span");
+                    timeSpan.className = "msg-time";
+                    timeSpan.textContent = timeString;
+
+                    div.appendChild(textSpan);
+                    div.appendChild(timeSpan);
                     messagesContainer.appendChild(div);
                 });
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -226,15 +261,20 @@
             profileModal.style.display = "flex";
         });
         document.getElementById("close-modal-btn").addEventListener("click", () => profileModal.style.display = "none");
+        
         document.getElementById("save-profile-btn").addEventListener("click", async () => {
             const newName = document.getElementById("edit-name-input").value.trim();
             const newPic = document.getElementById("edit-pic-input").value.trim();
-            if (newName && newPic) {
+            
+            // Validate image URL before saving
+            if (newName && newPic && newPic.startsWith('http')) {
                 await updateProfile(currentUser, { displayName: newName, photoURL: newPic });
                 await updateDoc(doc(db, "users", currentUser.uid), { name: newName, photoURL: newPic });
                 document.getElementById("my-name").textContent = newName;
                 document.getElementById("my-profile-pic").src = newPic;
                 profileModal.style.display = "none";
+            } else {
+                alert("Please enter a valid image URL starting with http");
             }
         });
     </script>
