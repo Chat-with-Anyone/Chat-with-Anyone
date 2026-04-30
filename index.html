@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'module' https://www.gstatic.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https:;">
     <meta name="google-site-verification" content="wCG4UFi1An-_Wa6m1kO2MpMmuii7GOmAyI6G-XiGfEo" />
     <meta name="google-site-verification" content="uxFFc2wW4266GeX3SJD-_9sGId4Mi6wer2hOxYW8SD0" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Portfolio Project: Firebase Chat App</title>
+    
+    <link rel="icon" type="image/png" href="logo.png">
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
@@ -146,7 +148,7 @@
             const password = document.getElementById("password-input").value.trim();
             if (!email || !password) return showError("Please enter email and password.");
             
-            emailAuthBtn.disabled = true; // UX Security: Prevent double-clicking
+            emailAuthBtn.disabled = true; 
             
             try {
                 if (isSignUpMode) {
@@ -179,13 +181,16 @@
                 loadUsers();
             } else {
                 currentUser = null;
-                loginScreen.style.display = "flex";
-                appScreen.style.display = "none";
+                loginScreen.style.display = "none"; // Temporarily hide while calculating
+                // Use a tiny timeout to avoid UI flicker on logout
+                setTimeout(() => {
+                    loginScreen.style.display = "flex";
+                    appScreen.style.display = "none";
+                }, 50);
                 if (unsubscribeMessages) unsubscribeMessages();
             }
         });
 
-        // SECURITY UPDATE: Replaced .innerHTML with safe DOM element creation
         function loadUsers() {
             onSnapshot(collection(db, "users"), (snapshot) => {
                 userList.innerHTML = ""; 
@@ -229,7 +234,6 @@
                     
                     let timeString = msg.timestamp ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now";
                     
-                    // Already highly secure!
                     const textSpan = document.createElement("span");
                     textSpan.className = "msg-text";
                     textSpan.textContent = msg.text;
@@ -266,7 +270,6 @@
             const newName = document.getElementById("edit-name-input").value.trim();
             const newPic = document.getElementById("edit-pic-input").value.trim();
             
-            // Validate image URL before saving
             if (newName && newPic && newPic.startsWith('http')) {
                 await updateProfile(currentUser, { displayName: newName, photoURL: newPic });
                 await updateDoc(doc(db, "users", currentUser.uid), { name: newName, photoURL: newPic });
