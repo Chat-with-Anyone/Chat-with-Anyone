@@ -2,12 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; script-src-elem 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https:;">
-    <meta name="google-site-verification" content="wCG4UFi1An-_Wa6m1kO2MpMmuii7GOmAyI6G-XiGfEo" />
-    <meta name="google-site-verification" content="uxFFc2wW4266GeX3SJD-_9sGId4Mi6wer2hOxYW8SD0" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Portfolio Project: Firebase Chat App</title>
-    
     <link rel="icon" type="image/png" href="logo.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
@@ -34,7 +30,7 @@
                 Continue with Google
             </button>
 
-            <p id="auth-error"></p>
+            <p id="auth-error" style="display:none; color: red; background: #fee; padding: 10px; border-radius: 5px; margin-top: 10px; font-size: 13px;"></p>
 
             <footer style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 11px; color: #888; line-height: 1.6; text-align: center;">
                 <p><strong>Developer Portfolio Project</strong></p>
@@ -111,7 +107,6 @@
 
         let currentUser = null;
         let currentChatId = null;
-        let currentChatUser = null;
         let unsubscribeMessages = null;
         let isSignUpMode = false; 
 
@@ -121,45 +116,35 @@
         const messagesContainer = document.getElementById("messages");
         const inputArea = document.getElementById("input-area");
         const messageInput = document.getElementById("message-input");
-        const chatWithName = document.getElementById("chat-with-name");
-        const profileModal = document.getElementById("profile-modal");
         const authError = document.getElementById("auth-error");
-        const emailAuthBtn = document.getElementById("email-auth-btn");
 
-        // --- AUTHENTICATION ---
+        function showError(msg) { 
+            authError.textContent = msg; 
+            authError.style.display = "block"; 
+            console.error("Auth Error:", msg);
+        }
+
+        // --- AUTH ---
         document.getElementById("google-login-btn").addEventListener("click", () => {
-            signInWithPopup(auth, new GoogleAuthProvider()).catch(err => showError(err.message));
+            signInWithPopup(auth, new GoogleAuthProvider()).catch(err => showError(err.code + ": " + err.message));
         });
 
         document.getElementById("toggle-mode-text").addEventListener("click", () => {
             isSignUpMode = !isSignUpMode;
             authError.style.display = "none";
-            if (isSignUpMode) {
-                emailAuthBtn.textContent = "Create Account";
-                document.getElementById("toggle-mode-text").innerHTML = 'Already have an account? <span>Sign In</span>';
-            } else {
-                emailAuthBtn.textContent = "Sign In";
-                document.getElementById("toggle-mode-text").innerHTML = 'New here? <span>Create an account</span>';
-            }
+            document.getElementById("email-auth-btn").textContent = isSignUpMode ? "Create Account" : "Sign In";
+            document.getElementById("toggle-mode-text").innerHTML = isSignUpMode ? 'Already have an account? <span>Sign In</span>' : 'New here? <span>Create an account</span>';
         });
 
-        emailAuthBtn.addEventListener("click", async () => {
+        document.getElementById("email-auth-btn").addEventListener("click", async () => {
             const email = document.getElementById("email-input").value.trim();
             const password = document.getElementById("password-input").value.trim();
-            if (!email || !password) return showError("Please enter email and password.");
-            emailAuthBtn.disabled = true; 
+            if (!email || !password) return showError("Enter email and password.");
             try {
-                if (isSignUpMode) {
-                    await createUserWithEmailAndPassword(auth, email, password);
-                } else {
-                    await signInWithEmailAndPassword(auth, email, password);
-                }
-            } catch (error) { showError(error.message); }
-            finally { emailAuthBtn.disabled = false; }
+                if (isSignUpMode) await createUserWithEmailAndPassword(auth, email, password);
+                else await signInWithEmailAndPassword(auth, email, password);
+            } catch (err) { showError(err.code + ": " + err.message); }
         });
-
-        function showError(msg) { authError.textContent = msg; authError.style.display = "block"; }
-        document.getElementById("logout-btn").addEventListener("click", () => signOut(auth));
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -167,7 +152,7 @@
                 loginScreen.style.display = "none";
                 appScreen.style.display = "flex";
                 const displayName = user.displayName || user.email.split('@')[0];
-                const photoURL = user.photoURL && user.photoURL.startsWith('http') ? user.photoURL : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+                const photoURL = user.photoURL || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
                 document.getElementById("my-name").textContent = displayName;
                 document.getElementById("my-profile-pic").src = photoURL;
                 await setDoc(doc(db, "users", user.uid), { uid: user.uid, name: displayName, email: user.email, photoURL: photoURL }, { merge: true });
@@ -180,7 +165,7 @@
             }
         });
 
-        // --- SIDEBAR & USERS ---
+        // --- CORE FUNCTIONS ---
         function loadUsers() {
             onSnapshot(collection(db, "users"), (snapshot) => {
                 userList.innerHTML = ""; 
@@ -189,82 +174,70 @@
                     if (currentUser && otherUser.uid !== currentUser.uid) {
                         const li = document.createElement("li");
                         const img = document.createElement("img");
-                        img.src = otherUser.photoURL && otherUser.photoURL.startsWith('http') ? otherUser.photoURL : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
-                        const nameSpan = document.createElement("span");
-                        nameSpan.textContent = otherUser.name || "User";
-                        li.appendChild(img); li.appendChild(nameSpan);
-                        li.addEventListener("click", () => openPrivateChat(otherUser));
-                        userList.appendChild(li);
+                        img.src = otherUser.photoURL.startsWith('http') ? otherUser.photoURL : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+                        const span = document.createElement("span");
+                        span.textContent = otherUser.name;
+                        li.append(img, span);
+                        li.onclick = () => openChat(otherUser);
+                        userList.append(li);
                     }
                 });
             });
         }
 
-        // --- CHAT LOGIC ---
-        async function openPrivateChat(otherUser) {
-            currentChatUser = otherUser;
+        async function openChat(otherUser) {
             currentChatId = currentUser.uid < otherUser.uid ? currentUser.uid + "_" + otherUser.uid : otherUser.uid + "_" + currentUser.uid;
-            chatWithName.textContent = otherUser.name;
+            document.getElementById("chat-with-name").textContent = otherUser.name;
             inputArea.style.display = "flex"; 
             if (unsubscribeMessages) unsubscribeMessages();
-            await setDoc(doc(db, "chats", currentChatId), { participants: [currentUser.uid, currentChatUser.uid] }, { merge: true });
+            await setDoc(doc(db, "chats", currentChatId), { participants: [currentUser.uid, otherUser.uid] }, { merge: true });
             const q = query(collection(db, "chats", currentChatId, "messages"), orderBy("timestamp", "asc"));
             unsubscribeMessages = onSnapshot(q, (snapshot) => {
                 messagesContainer.innerHTML = ""; 
-                snapshot.forEach((docSnap) => {
-                    const msg = docSnap.data({ serverTimestamps: "estimate" }); 
+                snapshot.forEach((d) => {
+                    const m = d.data({ serverTimestamps: "estimate" });
                     const div = document.createElement("div");
-                    div.className = msg.senderId === currentUser.uid ? "message my-message" : "message their-message";
-                    let timeString = msg.timestamp ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now";
-                    const textSpan = document.createElement("span");
-                    textSpan.textContent = msg.text;
-                    const timeSpan = document.createElement("span");
-                    timeSpan.className = "msg-time";
-                    timeSpan.textContent = timeString;
-                    div.appendChild(textSpan); div.appendChild(timeSpan);
-                    messagesContainer.appendChild(div);
+                    div.className = m.senderId === currentUser.uid ? "message my-message" : "message their-message";
+                    const t = m.timestamp ? m.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now";
+                    div.innerHTML = `<span class="msg-text"></span><span class="msg-time"></span>`;
+                    div.querySelector('.msg-text').textContent = m.text;
+                    div.querySelector('.msg-time').textContent = t;
+                    messagesContainer.append(div);
                 });
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
             });
         }
 
-        document.getElementById("send-btn").addEventListener("click", async () => {
-            const text = messageInput.value.trim();
-            if (!text || !currentChatId) return;
-            messageInput.value = ""; 
-            await addDoc(collection(db, "chats", currentChatId, "messages"), { text: text, senderId: currentUser.uid, timestamp: Timestamp.now() });
-        });
+        document.getElementById("send-btn").onclick = async () => {
+            const t = messageInput.value.trim();
+            if (!t) return;
+            messageInput.value = "";
+            await addDoc(collection(db, "chats", currentChatId, "messages"), { text: t, senderId: currentUser.uid, timestamp: Timestamp.now() });
+        };
 
-        messageInput.addEventListener("keypress", (e) => { if (e.key === "Enter") document.getElementById("send-btn").click(); });
-
-        // --- PROFILE & DELETE ---
-        document.getElementById("edit-profile-btn").addEventListener("click", () => {
+        document.getElementById("logout-btn").onclick = () => signOut(auth);
+        document.getElementById("edit-profile-btn").onclick = () => {
             document.getElementById("edit-name-input").value = currentUser.displayName || document.getElementById("my-name").textContent;
-            document.getElementById("edit-pic-input").value = currentUser.photoURL || document.getElementById("my-profile-pic").src;
-            profileModal.style.display = "flex";
-        });
-        document.getElementById("close-modal-btn").addEventListener("click", () => profileModal.style.display = "none");
-        document.getElementById("save-profile-btn").addEventListener("click", async () => {
-            const newName = document.getElementById("edit-name-input").value.trim();
-            const newPic = document.getElementById("edit-pic-input").value.trim();
-            if (newName && newPic.startsWith('http')) {
-                await updateProfile(currentUser, { displayName: newName, photoURL: newPic });
-                await updateDoc(doc(db, "users", currentUser.uid), { name: newName, photoURL: newPic });
-                document.getElementById("my-name").textContent = newName;
-                document.getElementById("my-profile-pic").src = newPic;
-                profileModal.style.display = "none";
-            } else { alert("Invalid inputs."); }
-        });
-
-        document.getElementById("delete-account-btn").addEventListener("click", async () => {
-            if (confirm("Permanently delete account?")) {
-                try {
-                    await deleteDoc(doc(db, "users", currentUser.uid));
-                    await deleteUser(currentUser);
-                    alert("Account Deleted.");
-                } catch (e) { alert("Error: Log out and back in to re-authenticate first."); }
+            document.getElementById("edit-pic-input").value = currentUser.photoURL || "";
+            document.getElementById("profile-modal").style.display = "flex";
+        };
+        document.getElementById("close-modal-btn").onclick = () => document.getElementById("profile-modal").style.display = "none";
+        document.getElementById("save-profile-btn").onclick = async () => {
+            const n = document.getElementById("edit-name-input").value.trim();
+            const p = document.getElementById("edit-pic-input").value.trim();
+            if (n) {
+                await updateProfile(currentUser, { displayName: n, photoURL: p });
+                await updateDoc(doc(db, "users", currentUser.uid), { name: n, photoURL: p });
+                location.reload();
             }
-        });
+        };
+        document.getElementById("delete-account-btn").onclick = async () => {
+            if (confirm("Delete Account?")) {
+                await deleteDoc(doc(db, "users", currentUser.uid));
+                await deleteUser(currentUser);
+                location.reload();
+            }
+        };
     </script>
 </body>
 </html>
